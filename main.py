@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +11,7 @@ from args import *
 from dataset import alzheimers_dataset
 from model import MyModel
 from train import train_model
+from utils import seed_everything
 
 # 1. get arguments
 args = get_args()
@@ -19,10 +21,34 @@ print("Device:", device)
 run_name = datetime.now().astimezone().strftime("%Y-%m-%d_%H%M%S")
 run_dir = Path(args.resume) if args.resume else Path(args.output_dir) / run_name
 
+# epoch limit and worker count may be adjusted between resumes
+run_dir.mkdir(parents=True, exist_ok=True)
+config = {k: v for k, v in vars(args).items() if k not in ("resume", "output_dir")}
+config_path = run_dir / "args.json"
+if config_path.exists():
+    saved = json.loads(config_path.read_text())
+    changed = sorted(
+        k
+        for k in config.keys() | saved.keys()
+        if k not in ("epochs", "num_workers") and config.get(k) != saved.get(k)
+    )
+    if changed:
+        raise SystemExit(f"Arguments differ from {config_path}: {changed}")
+config_path.write_text(json.dumps(config, indent=2) + "\n")
+
+loader_options = {
+    "batch_size": args.batch_size,
+    "num_workers": args.num_workers,
+    "pin_memory": device.type == "cuda",
+}
+
 # 2. Iterate over each fold
 
 for fold in range(5):
     print(f"fold {fold}")
+    seed_everything(args.seed + fold)
+    generator = torch.Generator().manual_seed(args.seed + fold)
+
     train_set = pd.read_csv(os.path.join(args.csv_dir, f"train_fold_{fold}.csv"))
     val_set = pd.read_csv(os.path.join(args.csv_dir, f"val_fold_{fold}.csv"))
 
@@ -31,8 +57,10 @@ for fold in range(5):
     val_dataset = alzheimers_dataset(val_set)
 
     # 4. Create data loaders
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
+    train_loader = DataLoader(
+        train_dataset, shuffle=True, generator=generator, **loader_options
+    )
+    val_loader = DataLoader(val_dataset, **loader_options)
 
     # 5. Initializing the model
     model = MyModel(backbone=args.backbone).to(device)

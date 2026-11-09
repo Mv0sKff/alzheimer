@@ -1,3 +1,4 @@
+import random
 from pathlib import Path
 
 import numpy as np
@@ -8,6 +9,29 @@ from sklearn.metrics import (
     balanced_accuracy_score,
     roc_auc_score,
 )
+
+
+def seed_everything(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+
+def get_rng_state(generator=None):
+    """Return the RNG states that affect training, as tensors for a safe torch.load."""
+    return {
+        "torch": torch.get_rng_state(),
+        "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else [],
+        "loader": generator.get_state() if generator is not None else None,
+    }
+
+
+def set_rng_state(state, generator=None):
+    torch.set_rng_state(state["torch"])
+    if state["cuda"] and torch.cuda.is_available():
+        torch.cuda.set_rng_state_all(state["cuda"])
+    if generator is not None and state["loader"] is not None:
+        generator.set_state(state["loader"])
 
 
 def compute_metrics(labels, logits):
