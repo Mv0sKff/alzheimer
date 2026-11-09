@@ -31,12 +31,12 @@ def get_args():
 
     parser.add_argument("--lr", type=float, default=1e-4)
 
-    parser.add_argument("--weight_decay", type=float, default=1e-4)
+    parser.add_argument("--weight_decay", type=float, default=1e-2)
 
-    # Epochs without validation balanced accuracy improvement before stopping.
+    # Epochs without subject-level validation improvement before stopping.
     parser.add_argument("--patience", type=int, default=10)
 
-    # Epochs without improvement before the learning rate is divided by 10.
+    # The learning rate is divided by 10 after every this many epochs without improvement.
     parser.add_argument("--lr_patience", type=int, default=3)
 
     parser.add_argument("--seed", type=int, default=42)

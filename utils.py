@@ -2,6 +2,7 @@ import random
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import torch
 from matplotlib.figure import Figure
 from sklearn.metrics import (
@@ -34,18 +35,33 @@ def set_rng_state(state, generator=None):
         generator.set_state(state["loader"])
 
 
-def compute_metrics(labels, logits):
+def classification_metrics(labels, probs):
     """Return accuracy, balanced accuracy, macro ROC-AUC and macro AP (one-vs-rest)."""
-    probs = torch.softmax(logits.double(), dim=1).numpy()
-    labels = labels.numpy()
     predictions = probs.argmax(axis=1)
     one_hot = np.eye(probs.shape[1])[labels]
 
     accuracy = float((predictions == labels).mean())
-    balanced_acc = balanced_accuracy_score(labels, predictions)
-    roc_auc = roc_auc_score(labels, probs, multi_class="ovr", average="macro")
-    avg_precision = average_precision_score(one_hot, probs, average="macro")
+    balanced_acc = float(balanced_accuracy_score(labels, predictions))
+    roc_auc = float(roc_auc_score(labels, probs, multi_class="ovr", average="macro"))
+    avg_precision = float(average_precision_score(one_hot, probs, average="macro"))
     return accuracy, balanced_acc, roc_auc, avg_precision
+
+
+def compute_metrics(labels, logits, subjects):
+    """Return the slice-level metrics followed by the subject-level metrics.
+
+    Subject-level predictions average the softmax probabilities of all slices of a subject.
+    """
+    probs = torch.softmax(logits.double(), dim=1).numpy()
+    labels = labels.numpy()
+    per_subject = pd.DataFrame(probs).groupby(np.asarray(subjects)).mean()
+    subject_labels = (
+        pd.Series(labels).groupby(np.asarray(subjects)).first()[per_subject.index]
+    )
+    return (
+        *classification_metrics(labels, probs),
+        *classification_metrics(subject_labels.to_numpy(), per_subject.to_numpy()),
+    )
 
 
 def plot_metric(train_values, val_values, name, save_path=None):

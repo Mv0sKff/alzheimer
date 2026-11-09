@@ -11,10 +11,29 @@ class History:
     balanced_accuracy: list[float] = field(default_factory=list)
     roc_auc: list[float] = field(default_factory=list)
     average_precision: list[float] = field(default_factory=list)
+    subject_accuracy: list[float] = field(default_factory=list)
+    subject_balanced_accuracy: list[float] = field(default_factory=list)
+    subject_roc_auc: list[float] = field(default_factory=list)
+    subject_average_precision: list[float] = field(default_factory=list)
 
-    def append(self, loss, accuracy, balanced_accuracy, roc_auc, average_precision):
+    def append(
+        self,
+        loss,
+        accuracy,
+        balanced_accuracy,
+        roc_auc,
+        average_precision,
+        subject_accuracy,
+        subject_balanced_accuracy,
+        subject_roc_auc,
+        subject_average_precision,
+    ):
         self.loss.append(loss)
         self.accuracy.append(accuracy)
         self.balanced_accuracy.append(balanced_accuracy)
         self.roc_auc.append(roc_auc)
         self.average_precision.append(average_precision)
+        self.subject_accuracy.append(subject_accuracy)
+        self.subject_balanced_accuracy.append(subject_balanced_accuracy)
+        self.subject_roc_auc.append(subject_roc_auc)
+        self.subject_average_precision.append(subject_average_precision)
