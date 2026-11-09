@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -13,6 +14,9 @@ from model import MyModel
 from summary import fold_number, summarize_folds
 from train import train_model
 from utils import seed_everything
+
+# Show each log line immediately, also when stdout is redirected to a file.
+sys.stdout.reconfigure(line_buffering=True) # type: ignore
 
 # 1. get arguments
 args = get_args()
