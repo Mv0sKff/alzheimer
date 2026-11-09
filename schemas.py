@@ -44,8 +44,8 @@ METRICS = [f.name for f in fields(History) if f.name != "loss"]
 
 
 def selection_score(history, epoch=-1):
-    """Subject-level balanced accuracy, with subject-level ROC-AUC breaking ties."""
-    return (history.subject_balanced_accuracy[epoch], history.subject_roc_auc[epoch])
+    """Negative validation loss, so a higher score is better."""
+    return -history.loss[epoch]
 
 
 def best_epoch(history):

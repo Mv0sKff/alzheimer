@@ -1,8 +1,9 @@
 from pathlib import Path
 
 import cv2
+import numpy as np
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Sampler
 from torchvision.transforms import v2
 
 ROOT = Path(__file__).resolve().parent
@@ -21,6 +22,41 @@ TRAIN_AUGMENTATION = v2.Compose(
 
 # DataLoader is already parallel so only 1 OpenCV thread
 cv2.setNumThreads(0)
+
+
+def first_scan(df):
+    """Keep only the slices of each subject's first scan (session and mpr number)."""
+    scan = df["Path"].str.extract(r"_(MR\d+_mpr-\d+)_", expand=False)
+    return df[scan == scan.groupby(df["Subject"]).transform("first")]
+
+
+class SubjectSampler(Sampler):
+    """Each epoch, draws slices_per_subject random slices of every subject from all
+    its scans, in random order, so every subject counts equally."""
+
+    def __init__(self, subjects, slices_per_subject, generator):
+        _, subject_ids = np.unique(subjects, return_inverse=True)
+        self.groups = [
+            torch.from_numpy(np.flatnonzero(subject_ids == i))
+            for i in range(subject_ids.max() + 1)
+        ]
+        self.slices_per_subject = slices_per_subject
+        self.generator = generator
+
+    def __len__(self):
+        return len(self.groups) * self.slices_per_subject
+
+    def __iter__(self):
+        k = self.slices_per_subject
+        picks = [
+            group[torch.randperm(len(group), generator=self.generator)[:k]]
+            if len(group) >= k
+            else group[torch.randint(len(group), (k,), generator=self.generator)]
+            for group in self.groups
+        ]
+        indices = torch.cat(picks)
+        order = torch.randperm(len(indices), generator=self.generator)
+        yield from indices[order].tolist()
 
 
 def read_img(file_path):

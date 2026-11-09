@@ -9,14 +9,14 @@ import torch
 from torch.utils.data import DataLoader
 
 from args import get_args
-from dataset import alzheimers_dataset
+from dataset import SubjectSampler, alzheimers_dataset, first_scan
 from model import MyModel
 from summary import fold_number, summarize_folds
 from train import train_model
 from utils import seed_everything
 
 # Show each log line immediately, also when stdout is redirected to a file.
-sys.stdout.reconfigure(line_buffering=True) # type: ignore
+sys.stdout.reconfigure(line_buffering=True)  # type: ignore
 
 # 1. get arguments
 args = get_args()
@@ -60,7 +60,10 @@ for fold in folds:
     generator = torch.Generator().manual_seed(args.seed + fold)
 
     train_set = pd.read_csv(os.path.join(args.csv_dir, f"train_fold_{fold}.csv"))
-    val_set = pd.read_csv(os.path.join(args.csv_dir, f"val_fold_{fold}.csv"))
+    # The repeated scans of a subject are nearly identical, so one is enough.
+    val_set = first_scan(
+        pd.read_csv(os.path.join(args.csv_dir, f"val_fold_{fold}.csv"))
+    )
 
     # 3. Preparing dataset
     train_dataset = alzheimers_dataset(train_set, augment=args.augment)
@@ -69,7 +72,9 @@ for fold in folds:
     # 4. Create data loaders
     train_loader = DataLoader(
         train_dataset,
-        shuffle=True,
+        sampler=SubjectSampler(
+            train_dataset.subjects, args.slices_per_subject, generator
+        ),
         drop_last=True,
         generator=generator,
         **loader_options,

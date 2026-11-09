@@ -35,7 +35,10 @@ def get_args():
 
     parser.add_argument("--weight_decay", type=float, default=1e-2)
 
-    # Epochs without subject-level validation improvement before stopping.
+    # Training slices drawn per subject in each epoch (see dataset.SubjectSampler).
+    parser.add_argument("--slices_per_subject", type=int, default=32)
+
+    # Epochs without a lower validation loss before stopping.
     parser.add_argument("--patience", type=int, default=10)
 
     # The learning rate is divided by 10 after every this many epochs without improvement.

@@ -17,13 +17,15 @@ def train_model(model, train_loader, val_loader, fold, output_dir, args, save=Fa
     train_history = History()
     val_history = History()
     lrs = []
-    best_score = (-1.0, -1.0)
+    best_score = float("-inf")
     epochs_without_improvement = 0
     start_epoch = 0
     device = next(model.parameters()).device
     use_amp = args.amp and device.type == "cuda"
     num_classes = model.model.fc.out_features
-    fold_labels = torch.tensor(train_loader.dataset.dataset["Label"].to_numpy())
+    # SubjectSampler draws equally from every subject, so weight by subjects per class.
+    subject_labels = train_loader.dataset.dataset.groupby("Subject")["Label"].first()
+    fold_labels = torch.tensor(subject_labels.to_numpy())
     counts = torch.bincount(fold_labels, minlength=num_classes).float()
     class_weights = counts.sum() / (num_classes * counts.clamp(min=1))
     criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
@@ -41,7 +43,7 @@ def train_model(model, train_loader, val_loader, fold, output_dir, args, save=Fa
         train_history = History(**state["train_history"])
         val_history = History(**state["val_history"])
         lrs = state["lrs"]
-        best_score = tuple(state["best_score"])
+        best_score = state["best_score"]
         epochs_without_improvement = state["epochs_without_improvement"]
         set_rng_state(state["rng"], train_loader.generator)
         start_epoch = state["epoch"] + 1
@@ -116,7 +118,7 @@ def train_model(model, train_loader, val_loader, fold, output_dir, args, save=Fa
                     "train_history": asdict(train_history),
                     "val_history": asdict(val_history),
                     "lrs": lrs,
-                    "best_score": list(best_score),
+                    "best_score": best_score,
                     "epochs_without_improvement": epochs_without_improvement,
                     "rng": get_rng_state(train_loader.generator),
                     "epoch": epoch,
