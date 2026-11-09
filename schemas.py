@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 
 # Order defines label ids
 CLASSES = ["Non Demented", "Very mild Dementia", "Mild Dementia"]
@@ -37,3 +37,19 @@ class History:
         self.subject_balanced_accuracy.append(subject_balanced_accuracy)
         self.subject_roc_auc.append(subject_roc_auc)
         self.subject_average_precision.append(subject_average_precision)
+
+
+# Metric names in the order returned by utils.compute_metrics
+METRICS = [f.name for f in fields(History) if f.name != "loss"]
+
+
+def selection_score(history, epoch=-1):
+    """Subject-level balanced accuracy, with subject-level ROC-AUC breaking ties."""
+    return (history.subject_balanced_accuracy[epoch], history.subject_roc_auc[epoch])
+
+
+def best_epoch(history):
+    """First epoch with the highest selection score, matching the saved best model."""
+    return max(
+        range(len(history.loss)), key=lambda epoch: selection_score(history, epoch)
+    )

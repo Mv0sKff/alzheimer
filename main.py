@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 from args import *
 from dataset import alzheimers_dataset
 from model import MyModel
+from summary import summarize_folds
 from train import train_model
 from utils import seed_everything
 
@@ -74,3 +75,6 @@ for fold in range(5):
         output_dir=run_dir,
         save=True,
     )
+
+# 7. Summarize the validation results across folds
+summarize_folds(run_dir)

@@ -4,15 +4,10 @@ import torch
 from torch import nn, optim
 
 from args import *
-from schemas import History
+from schemas import History, selection_score
 from utils import compute_metrics, get_rng_state, plot_metric, set_rng_state
 
 args = get_args()
-
-
-def selection_score(history):
-    """Subject-level balanced accuracy, with subject-level ROC-AUC breaking ties."""
-    return (history.subject_balanced_accuracy[-1], history.subject_roc_auc[-1])
 
 
 def train_model(model, train_loader, val_loader, fold, output_dir, save=False):
