@@ -47,21 +47,33 @@ def classification_metrics(labels, probs):
     return accuracy, balanced_acc, roc_auc, avg_precision
 
 
-def compute_metrics(labels, logits, subjects):
-    """Return the slice-level metrics followed by the subject-level metrics.
+def subject_probabilities(labels, probs, subjects):
+    """Average the slice probabilities of each subject.
 
-    Subject-level predictions average the softmax probabilities of all slices of a subject.
+    Returns the subject ids, their labels and their averaged probabilities.
     """
-    probs = torch.softmax(logits.double(), dim=1).numpy()
-    labels = labels.numpy()
-    per_subject = pd.DataFrame(probs).groupby(np.asarray(subjects)).mean()
-    subject_labels = (
-        pd.Series(labels).groupby(np.asarray(subjects)).first()[per_subject.index]
+    subjects = np.asarray(subjects)
+    per_subject = pd.DataFrame(probs).groupby(subjects).mean()
+    subject_labels = pd.Series(labels).groupby(subjects).first()[per_subject.index]
+    return (
+        per_subject.index.to_numpy(),
+        subject_labels.to_numpy(),
+        per_subject.to_numpy(),
     )
+
+
+def metrics_from_probs(labels, probs, subjects):
+    """Return the slice-level metrics followed by the subject-level metrics."""
+    _, subject_labels, subject_probs = subject_probabilities(labels, probs, subjects)
     return (
         *classification_metrics(labels, probs),
-        *classification_metrics(subject_labels.to_numpy(), per_subject.to_numpy()),
+        *classification_metrics(subject_labels, subject_probs),
     )
+
+
+def compute_metrics(labels, logits, subjects):
+    probs = torch.softmax(logits.double(), dim=1).numpy()
+    return metrics_from_probs(labels.numpy(), probs, subjects)
 
 
 def plot_metric(train_values, val_values, name, save_path=None):
