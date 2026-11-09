@@ -5,7 +5,7 @@ from torch import nn, optim
 
 from args import *
 from schemas import History
-from utils import compute_metrics, plot_metric
+from utils import compute_metrics, get_rng_state, plot_metric, set_rng_state
 
 args = get_args()
 
@@ -14,8 +14,10 @@ def train_model(model, train_loader, val_loader, fold, output_dir, save=False):
     train_history = History()
     val_history = History()
     best_balanced_accuracy = -1.0
+    epochs_without_improvement = 0
     start_epoch = 0
     device = next(model.parameters()).device
+    use_amp = args.amp and device.type == "cuda"
     num_classes = model.model.fc.out_features
     fold_labels = torch.tensor(train_loader.dataset.dataset["Label"].to_numpy())
     counts = torch.bincount(fold_labels, minlength=num_classes).float()
@@ -24,17 +26,31 @@ def train_model(model, train_loader, val_loader, fold, output_dir, save=False):
     optimizer = optim.Adam(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode="max", factor=0.1, patience=args.lr_patience
+    )
+    scaler = torch.amp.GradScaler(device.type, enabled=use_amp)
     last_path = output_dir / f"last_fold_{fold}.pt"
     if last_path.exists():
         state = torch.load(last_path, map_location=device)
         model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
+        scheduler.load_state_dict(state["scheduler"])
+        scaler.load_state_dict(state["scaler"])
         train_history = History(**state["train_history"])
         val_history = History(**state["val_history"])
         best_balanced_accuracy = state["best_balanced_accuracy"]
+        epochs_without_improvement = state["epochs_without_improvement"]
+        set_rng_state(state["rng"], train_loader.generator)
         start_epoch = state["epoch"] + 1
         print(f"fold {fold}: resuming at epoch {start_epoch}")
     for epoch in range(start_epoch, args.epochs):
+        if epochs_without_improvement >= args.patience:
+            print(
+                f"fold {fold}: early stopping, no improvement for {args.patience} epochs"
+            )
+            break
+
         model.train()
         running_loss = 0.0
         total = 0
@@ -42,36 +58,43 @@ def train_model(model, train_loader, val_loader, fold, output_dir, save=False):
         train_labels = []
 
         for batch in train_loader:
-            inputs = batch["image"].to(device)
-            labels = batch["target"].to(device)
+            inputs = batch["image"].to(device, non_blocking=True)
+            labels = batch["target"].to(device, non_blocking=True)
 
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
+            optimizer.zero_grad(set_to_none=True)
+            with torch.autocast(device.type, enabled=use_amp):
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
             # calc more metrics if needed
 
-            loss.backward()
-            optimizer.step()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
 
             running_loss += loss.item() * inputs.size(0)
             total += inputs.size(0)
-            train_logits.append(outputs.detach().cpu())
+            train_logits.append(outputs.detach().float().cpu())
             train_labels.append(labels.cpu())
 
         train_history.append(
             running_loss / total,
             *compute_metrics(torch.cat(train_labels), torch.cat(train_logits)),
         )
-        val_history.append(*validate_model(model, val_loader, criterion))
+        val_history.append(*validate_model(model, val_loader, criterion, use_amp))
 
         val_loss = val_history.loss[-1]
+        lr = optimizer.param_groups[0]["lr"]
+        scheduler.step(val_history.balanced_accuracy[-1])
         if val_history.balanced_accuracy[-1] > best_balanced_accuracy:
             best_balanced_accuracy = val_history.balanced_accuracy[-1]
+            epochs_without_improvement = 0
             if save:
                 output_dir.mkdir(parents=True, exist_ok=True)
                 torch.save(
                     model.state_dict(), output_dir / f"best_model_fold_{fold}.pth"
                 )
+        else:
+            epochs_without_improvement += 1
 
         if save:
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -80,9 +103,13 @@ def train_model(model, train_loader, val_loader, fold, output_dir, save=False):
                 {
                     "model": model.state_dict(),
                     "optimizer": optimizer.state_dict(),
+                    "scheduler": scheduler.state_dict(),
+                    "scaler": scaler.state_dict(),
                     "train_history": asdict(train_history),
                     "val_history": asdict(val_history),
                     "best_balanced_accuracy": best_balanced_accuracy,
+                    "epochs_without_improvement": epochs_without_improvement,
+                    "rng": get_rng_state(train_loader.generator),
                     "epoch": epoch,
                 },
                 tmp_path,
@@ -91,6 +118,7 @@ def train_model(model, train_loader, val_loader, fold, output_dir, save=False):
 
         print(
             f"epoch: {epoch} |",
+            f"lr: {lr:.1e} |",
             f"train loss: {train_history.loss[-1]:.4f} |",
             f"val loss: {val_loss:.4f} |",
             f"val accuracy: {val_history.accuracy[-1]:.4f} |",
@@ -115,7 +143,7 @@ def train_model(model, train_loader, val_loader, fold, output_dir, save=False):
             )
 
 
-def validate_model(model, val_loader, criterion):
+def validate_model(model, val_loader, criterion, use_amp=False):
     model.eval()
     device = next(model.parameters()).device
 
@@ -125,17 +153,17 @@ def validate_model(model, val_loader, criterion):
     all_labels = []
 
     for batch in val_loader:
-        inputs = batch["image"].to(device)
-        labels = batch["target"].to(device)
+        inputs = batch["image"].to(device, non_blocking=True)
+        labels = batch["target"].to(device, non_blocking=True)
 
-        with torch.no_grad():
+        with torch.no_grad(), torch.autocast(device.type, enabled=use_amp):
             outputs = model(inputs)
             loss = criterion(outputs, labels)
 
-            running_loss += loss.item() * inputs.size(0)
-            total += outputs.size(0)
-            all_logits.append(outputs.cpu())
-            all_labels.append(labels.cpu())
+        running_loss += loss.item() * inputs.size(0)
+        total += outputs.size(0)
+        all_logits.append(outputs.float().cpu())
+        all_labels.append(labels.cpu())
 
     accuracy, balanced_acc, roc_auc, avg_precision = compute_metrics(
         torch.cat(all_labels), torch.cat(all_logits)
