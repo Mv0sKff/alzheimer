@@ -7,10 +7,10 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
-from args import *
+from args import get_args
 from dataset import alzheimers_dataset
 from model import MyModel
-from summary import summarize_folds
+from summary import fold_number, summarize_folds
 from train import train_model
 from utils import seed_everything
 
@@ -45,7 +45,11 @@ loader_options = {
 
 # 2. Iterate over each fold
 
-for fold in range(5):
+folds = sorted(fold_number(p) for p in Path(args.csv_dir).glob("train_fold_*.csv"))
+if not folds:
+    raise SystemExit(f"No train_fold_*.csv files in {args.csv_dir}")
+
+for fold in folds:
     print(f"fold {fold}")
     seed_everything(args.seed + fold)
     generator = torch.Generator().manual_seed(args.seed + fold)
@@ -73,6 +77,7 @@ for fold in range(5):
         val_loader,
         fold=fold,
         output_dir=run_dir,
+        args=args,
         save=True,
     )
 

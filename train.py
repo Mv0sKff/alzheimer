@@ -3,14 +3,11 @@ from dataclasses import asdict
 import torch
 from torch import nn, optim
 
-from args import *
 from schemas import History, selection_score
 from utils import compute_metrics, get_rng_state, plot_metric, set_rng_state
 
-args = get_args()
 
-
-def train_model(model, train_loader, val_loader, fold, output_dir, save=False):
+def train_model(model, train_loader, val_loader, fold, output_dir, args, save=False):
     train_history = History()
     val_history = History()
     best_score = (-1.0, -1.0)
@@ -90,7 +87,7 @@ def train_model(model, train_loader, val_loader, fold, output_dir, save=False):
             if save:
                 output_dir.mkdir(parents=True, exist_ok=True)
                 torch.save(
-                    model.state_dict(), output_dir / f"best_model_fold_{fold}.pth"
+                    model.state_dict(), output_dir / f"best_model_fold_{fold}.pt"
                 )
         else:
             epochs_without_improvement += 1

@@ -2,6 +2,8 @@ import argparse
 import os
 from pathlib import Path
 
+from model import BACKBONES
+
 
 def get_args():
     parser = argparse.ArgumentParser(description="Parse model training options.")
@@ -10,7 +12,7 @@ def get_args():
         "--backbone",
         type=str,
         default="resnet18",
-        choices=["resnet18", "resnet34", "resnet50"],
+        choices=list(BACKBONES),
     )
 
     parser.add_argument(

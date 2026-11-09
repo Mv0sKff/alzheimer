@@ -1,42 +1,21 @@
 from torch import nn
-from torch.nn import Module
-from torchvision.models import (
-    ResNet18_Weights,
-    ResNet34_Weights,
-    ResNet50_Weights,
-    resnet18,
-    resnet34,
-    resnet50,
-)
+from torchvision import models
 
-from args import *
 from schemas import CLASSES
 
+BACKBONES = {
+    "resnet18": (models.resnet18, models.ResNet18_Weights.IMAGENET1K_V1),
+    "resnet34": (models.resnet34, models.ResNet34_Weights.IMAGENET1K_V1),
+    "resnet50": (models.resnet50, models.ResNet50_Weights.IMAGENET1K_V1),
+}
 NUM_CLASSES = len(CLASSES)
 
 
-class MyModel(Module):
+class MyModel(nn.Module):
     def __init__(self, backbone="resnet18", pretrained=True, num_classes=NUM_CLASSES):
         super().__init__()
-
-        # TODO: could be done cleaner
-        if backbone == "resnet18":
-            self.model = resnet18(
-                weights=ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
-            )
-        elif backbone == "resnet34":
-            self.model = resnet34(
-                weights=ResNet34_Weights.IMAGENET1K_V1 if pretrained else None
-            )
-        elif backbone == "resnet50":
-            self.model = resnet50(
-                weights=ResNet50_Weights.IMAGENET1K_V1 if pretrained else None
-            )
-        else:
-            self.model = resnet18(
-                weights=ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
-            )
-
+        build, weights = BACKBONES[backbone]
+        self.model = build(weights=weights if pretrained else None)
         self.model.fc = nn.Linear(self.model.fc.in_features, num_classes)
 
     def forward(self, x):
