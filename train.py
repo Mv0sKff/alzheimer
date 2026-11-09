@@ -17,8 +17,8 @@ def train_model(model, train_loader, val_loader, fold, output_dir, save=False):
     start_epoch = 0
     device = next(model.parameters()).device
     num_classes = model.model.fc.out_features
-    labels = torch.as_tensor(train_loader.dataset.dataset["Label"].to_numpy())
-    counts = torch.bincount(labels, minlength=num_classes).float()
+    fold_labels = torch.tensor(train_loader.dataset.dataset["Label"].to_numpy())
+    counts = torch.bincount(fold_labels, minlength=num_classes).float()
     class_weights = counts.sum() / (num_classes * counts.clamp(min=1))
     criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
     optimizer = optim.Adam(
