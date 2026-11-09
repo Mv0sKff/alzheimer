@@ -1,4 +1,5 @@
 import random
+from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
@@ -74,6 +75,18 @@ def metrics_from_probs(labels, probs, subjects):
 def compute_metrics(labels, logits, subjects):
     probs = torch.softmax(logits.double(), dim=1).numpy()
     return metrics_from_probs(labels.numpy(), probs, subjects)
+
+
+def write_history(path, lrs, train_history, val_history):
+    """Write one row per epoch with the learning rate and all train and val metrics."""
+    table = pd.DataFrame({"epoch": range(len(lrs)), "lr": lrs})
+    for prefix, history in (("train", train_history), ("val", val_history)):
+        for name, values in asdict(history).items():
+            table[f"{prefix}_{name}"] = values
+    path = Path(path)
+    tmp_path = path.with_suffix(".tmp")
+    table.to_csv(tmp_path, index=False, float_format="%.6g")
+    tmp_path.replace(path)
 
 
 def plot_metric(train_values, val_values, name, save_path=None):

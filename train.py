@@ -4,12 +4,19 @@ import torch
 from torch import nn, optim
 
 from schemas import History, selection_score
-from utils import compute_metrics, get_rng_state, plot_metric, set_rng_state
+from utils import (
+    compute_metrics,
+    get_rng_state,
+    plot_metric,
+    set_rng_state,
+    write_history,
+)
 
 
 def train_model(model, train_loader, val_loader, fold, output_dir, args, save=False):
     train_history = History()
     val_history = History()
+    lrs = []
     best_score = (-1.0, -1.0)
     epochs_without_improvement = 0
     start_epoch = 0
@@ -25,6 +32,7 @@ def train_model(model, train_loader, val_loader, fold, output_dir, args, save=Fa
     )
     scaler = torch.amp.GradScaler(device.type, enabled=use_amp)
     last_path = output_dir / f"last_fold_{fold}.pt"
+    history_path = output_dir / f"history_fold_{fold}.csv"
     if last_path.exists():
         state = torch.load(last_path, map_location=device)
         model.load_state_dict(state["model"])
@@ -32,6 +40,7 @@ def train_model(model, train_loader, val_loader, fold, output_dir, args, save=Fa
         scaler.load_state_dict(state["scaler"])
         train_history = History(**state["train_history"])
         val_history = History(**state["val_history"])
+        lrs = state["lrs"]
         best_score = tuple(state["best_score"])
         epochs_without_improvement = state["epochs_without_improvement"]
         set_rng_state(state["rng"], train_loader.generator)
@@ -81,6 +90,7 @@ def train_model(model, train_loader, val_loader, fold, output_dir, args, save=Fa
 
         val_loss = val_history.loss[-1]
         lr = optimizer.param_groups[0]["lr"]
+        lrs.append(lr)
         if selection_score(val_history) > best_score:
             best_score = selection_score(val_history)
             epochs_without_improvement = 0
@@ -105,6 +115,7 @@ def train_model(model, train_loader, val_loader, fold, output_dir, args, save=Fa
                     "scaler": scaler.state_dict(),
                     "train_history": asdict(train_history),
                     "val_history": asdict(val_history),
+                    "lrs": lrs,
                     "best_score": list(best_score),
                     "epochs_without_improvement": epochs_without_improvement,
                     "rng": get_rng_state(train_loader.generator),
@@ -113,6 +124,7 @@ def train_model(model, train_loader, val_loader, fold, output_dir, args, save=Fa
                 tmp_path,
             )
             tmp_path.replace(last_path)
+            write_history(history_path, lrs, train_history, val_history)
 
         print(
             f"epoch: {epoch} |",
