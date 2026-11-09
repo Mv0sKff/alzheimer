@@ -68,7 +68,11 @@ for fold in folds:
 
     # 4. Create data loaders
     train_loader = DataLoader(
-        train_dataset, shuffle=True, generator=generator, **loader_options
+        train_dataset,
+        shuffle=True,
+        drop_last=True,
+        generator=generator,
+        **loader_options,
     )
     val_loader = DataLoader(val_dataset, **loader_options)
 
