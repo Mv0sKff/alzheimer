@@ -27,7 +27,8 @@ def get_args():
         "--csv_dir", type=str, default=str(Path(__file__).resolve().parent / "data/csv")
     )
 
-    parser.add_argument("--epochs", type=int, default=100)
+    # Length of the learning rate schedule, so it cannot change when resuming.
+    parser.add_argument("--epochs", type=int, default=30)
 
     parser.add_argument("--batch_size", type=int, default=32, choices=[16, 32, 64, 128])
 
@@ -38,11 +39,11 @@ def get_args():
     # Training slices drawn per subject in each epoch (see dataset.SubjectSampler).
     parser.add_argument("--slices_per_subject", type=int, default=32)
 
-    # Epochs without a lower validation loss before stopping.
-    parser.add_argument("--patience", type=int, default=10)
+    # Linear learning rate warmup, followed by cosine decay to zero at --epochs.
+    parser.add_argument("--warmup_epochs", type=int, default=1)
 
-    # The learning rate is divided by 10 after every this many epochs without improvement.
-    parser.add_argument("--lr_patience", type=int, default=3)
+    # Epochs without a lower validation loss before stopping early.
+    parser.add_argument("--patience", type=int, default=10)
 
     parser.add_argument("--seed", type=int, default=42)
 

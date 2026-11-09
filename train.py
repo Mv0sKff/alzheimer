@@ -1,3 +1,4 @@
+import math
 from dataclasses import asdict
 
 import torch
@@ -11,6 +12,18 @@ from utils import (
     set_rng_state,
     write_history,
 )
+
+
+def warmup_cosine(warmup_steps, total_steps):
+    """Learning rate factor per step: linear warmup, then cosine decay to zero."""
+
+    def factor(step):
+        if step < warmup_steps:
+            return (step + 1) / warmup_steps
+        progress = (step - warmup_steps) / max(1, total_steps - warmup_steps)
+        return 0.5 * (1 + math.cos(math.pi * min(progress, 1.0)))
+
+    return factor
 
 
 def train_model(model, train_loader, val_loader, fold, output_dir, args, save=False):
@@ -32,6 +45,13 @@ def train_model(model, train_loader, val_loader, fold, output_dir, args, save=Fa
     optimizer = optim.AdamW(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
+    steps_per_epoch = len(train_loader)
+    scheduler = optim.lr_scheduler.LambdaLR(
+        optimizer,
+        warmup_cosine(
+            args.warmup_epochs * steps_per_epoch, args.epochs * steps_per_epoch
+        ),
+    )
     scaler = torch.amp.GradScaler(device.type, enabled=use_amp)
     last_path = output_dir / f"last_fold_{fold}.pt"
     history_path = output_dir / f"history_fold_{fold}.csv"
@@ -39,6 +59,7 @@ def train_model(model, train_loader, val_loader, fold, output_dir, args, save=Fa
         state = torch.load(last_path, map_location=device)
         model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
+        scheduler.load_state_dict(state["scheduler"])
         scaler.load_state_dict(state["scaler"])
         train_history = History(**state["train_history"])
         val_history = History(**state["val_history"])
@@ -55,6 +76,7 @@ def train_model(model, train_loader, val_loader, fold, output_dir, args, save=Fa
             )
             break
 
+        lr = optimizer.param_groups[0]["lr"]
         model.train()
         running_loss = 0.0
         total = 0
@@ -75,6 +97,7 @@ def train_model(model, train_loader, val_loader, fold, output_dir, args, save=Fa
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
+            scheduler.step()
 
             running_loss += loss.item() * inputs.size(0)
             total += inputs.size(0)
@@ -91,7 +114,6 @@ def train_model(model, train_loader, val_loader, fold, output_dir, args, save=Fa
         val_history.append(*validate_model(model, val_loader, criterion, use_amp))
 
         val_loss = val_history.loss[-1]
-        lr = optimizer.param_groups[0]["lr"]
         lrs.append(lr)
         if selection_score(val_history) > best_score:
             best_score = selection_score(val_history)
@@ -103,9 +125,6 @@ def train_model(model, train_loader, val_loader, fold, output_dir, args, save=Fa
                 )
         else:
             epochs_without_improvement += 1
-            if epochs_without_improvement % args.lr_patience == 0:
-                for group in optimizer.param_groups:
-                    group["lr"] *= 0.1
 
         if save:
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -114,6 +133,7 @@ def train_model(model, train_loader, val_loader, fold, output_dir, args, save=Fa
                 {
                     "model": model.state_dict(),
                     "optimizer": optimizer.state_dict(),
+                    "scheduler": scheduler.state_dict(),
                     "scaler": scaler.state_dict(),
                     "train_history": asdict(train_history),
                     "val_history": asdict(val_history),

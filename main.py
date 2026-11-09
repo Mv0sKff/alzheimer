@@ -26,7 +26,7 @@ print("Device:", device)
 run_name = datetime.now().astimezone().strftime("%Y-%m-%d_%H%M%S")
 run_dir = Path(args.resume) if args.resume else Path(args.output_dir) / run_name
 
-# epoch limit and worker count may be adjusted between resumes
+# only the worker count may be adjusted between resumes
 run_dir.mkdir(parents=True, exist_ok=True)
 config = {k: v for k, v in vars(args).items() if k not in ("resume", "output_dir")}
 config_path = run_dir / "args.json"
@@ -35,7 +35,7 @@ if config_path.exists():
     changed = sorted(
         k
         for k in config.keys() | saved.keys()
-        if k not in ("epochs", "num_workers") and config.get(k) != saved.get(k)
+        if k != "num_workers" and config.get(k) != saved.get(k)
     )
     if changed:
         raise SystemExit(f"Arguments differ from {config_path}: {changed}")
