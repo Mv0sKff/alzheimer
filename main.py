@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from args import *
-from dataset import knee_xray_dataset
+from dataset import alzheimers_dataset
 from model import MyModel
 from train import train_model
 
@@ -27,8 +27,8 @@ for fold in range(5):
     val_set = pd.read_csv(os.path.join(args.csv_dir, f"val_fold_{fold}.csv"))
 
     # 3. Preparing dataset
-    train_dataset = knee_xray_dataset(train_set)
-    val_dataset = knee_xray_dataset(val_set)
+    train_dataset = alzheimers_dataset(train_set)
+    val_dataset = alzheimers_dataset(val_set)
 
     # 4. Create data loaders
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)

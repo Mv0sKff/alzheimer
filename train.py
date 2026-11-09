@@ -16,7 +16,11 @@ def train_model(model, train_loader, val_loader, fold, output_dir, save=False):
     best_balanced_accuracy = -1.0
     start_epoch = 0
     device = next(model.parameters()).device
-    criterion = nn.CrossEntropyLoss()
+    num_classes = model.model.fc.out_features
+    labels = torch.as_tensor(train_loader.dataset.dataset["Label"].to_numpy())
+    counts = torch.bincount(labels, minlength=num_classes).float()
+    class_weights = counts.sum() / (num_classes * counts.clamp(min=1))
+    criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
     optimizer = optim.Adam(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
@@ -38,7 +42,7 @@ def train_model(model, train_loader, val_loader, fold, output_dir, save=False):
         train_labels = []
 
         for batch in train_loader:
-            inputs = batch["xray"].to(device)
+            inputs = batch["image"].to(device)
             labels = batch["target"].to(device)
 
             optimizer.zero_grad()
@@ -121,7 +125,7 @@ def validate_model(model, val_loader, criterion):
     all_labels = []
 
     for batch in val_loader:
-        inputs = batch["xray"].to(device)
+        inputs = batch["image"].to(device)
         labels = batch["target"].to(device)
 
         with torch.no_grad():

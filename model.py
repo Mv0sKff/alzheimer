@@ -10,10 +10,13 @@ from torchvision.models import (
 )
 
 from args import *
+from schemas import CLASSES
+
+NUM_CLASSES = len(CLASSES)
 
 
 class MyModel(Module):
-    def __init__(self, backbone="resnet18", pretrained=True):
+    def __init__(self, backbone="resnet18", pretrained=True, num_classes=NUM_CLASSES):
         super().__init__()
 
         # TODO: could be done cleaner
@@ -34,7 +37,7 @@ class MyModel(Module):
                 weights=ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
             )
 
-        self.model.fc = nn.Linear(self.model.fc.in_features, 5)
+        self.model.fc = nn.Linear(self.model.fc.in_features, num_classes)
 
     def forward(self, x):
         return self.model(x)

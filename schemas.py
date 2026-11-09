@@ -1,5 +1,8 @@
 from dataclasses import dataclass, field
 
+# Order defines label ids
+CLASSES = ["Non Demented", "Very mild Dementia", "Mild Dementia"]
+
 
 @dataclass
 class History:
