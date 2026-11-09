@@ -45,6 +45,11 @@ def get_args():
 
     parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count() or 1))
 
+    # Random training augmentation (see dataset.TRAIN_AUGMENTATION).
+    parser.add_argument(
+        "--augment", action=argparse.BooleanOptionalAction, default=True
+    )
+
     # Mixed precision, only used on CUDA.
     parser.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True)
 

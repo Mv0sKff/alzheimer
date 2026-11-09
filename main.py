@@ -58,7 +58,7 @@ for fold in folds:
     val_set = pd.read_csv(os.path.join(args.csv_dir, f"val_fold_{fold}.csv"))
 
     # 3. Preparing dataset
-    train_dataset = alzheimers_dataset(train_set)
+    train_dataset = alzheimers_dataset(train_set, augment=args.augment)
     val_dataset = alzheimers_dataset(val_set)
 
     # 4. Create data loaders
