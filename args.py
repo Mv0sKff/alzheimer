@@ -27,7 +27,7 @@ def get_args():
         "--csv_dir", type=str, default=str(Path(__file__).resolve().parent / "data/csv")
     )
 
-    # Length of the learning rate schedule, so it cannot change when resuming.
+    # Length of the learning rate schedule (it cannot change when resuming)
     parser.add_argument("--epochs", type=int, default=30)
 
     parser.add_argument("--batch_size", type=int, default=32, choices=[16, 32, 64, 128])
@@ -47,7 +47,7 @@ def get_args():
 
     parser.add_argument("--seed", type=int, default=42)
 
-    parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count() or 1))
+    parser.add_argument("--num_workers", type=int, default=min(6, os.cpu_count() or 1))
 
     # Random training augmentation (see dataset.TRAIN_AUGMENTATION).
     parser.add_argument(
