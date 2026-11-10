@@ -9,7 +9,7 @@ import torch
 from sklearn.metrics import confusion_matrix
 from torch.utils.data import DataLoader
 
-from dataset import alzheimers_dataset
+from dataset import alzheimers_dataset, first_scan
 from model import MyModel
 from schemas import CLASSES, METRICS
 from summary import fold_number, summary_table
@@ -18,21 +18,28 @@ from utils import metrics_from_probs, subject_probabilities
 ROOT = Path(__file__).resolve().parent
 
 
-def predict(model, loader, use_amp=False):
-    """Return the softmax probabilities of every slice in loader order."""
-    model.eval()
-    device = next(model.parameters()).device
-    logits = []
-    with torch.no_grad(), torch.autocast(device.type, enabled=use_amp):
-        for batch in loader:
-            logits.append(model(batch["image"].to(device, non_blocking=True)).float())
-    return torch.softmax(torch.cat(logits).double(), dim=1).cpu().numpy()
+def predict(models, loader, use_amp=False):
+    """Return the softmax probabilities of every slice in loader order, one array
+    per model. Each batch is loaded once and passed through all models."""
+    device = next(models[0].parameters()).device
+    logits = [[] for _ in models]
+    with torch.inference_mode(), torch.autocast(device.type, enabled=use_amp):
+        for i, batch in enumerate(loader, 1):
+            images = batch["image"].to(
+                device, non_blocking=True, memory_format=torch.channels_last
+            )
+            for model, model_logits in zip(models, logits):
+                model_logits.append(model(images).float())
+            print(f"\rbatch {i}/{len(loader)}", end="", flush=True)
+    print()
+    return [torch.softmax(torch.cat(x).double(), dim=1).cpu().numpy() for x in logits]
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--csv", type=Path, default=ROOT / "data/csv/test.csv")
+    parser.add_argument("--all_scans", action="store_true")
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--num_workers", type=int, default=min(8, os.cpu_count() or 1))
     args = parser.parse_args()
@@ -45,6 +52,9 @@ def main():
         raise SystemExit(f"No best_model_fold_*.pt files in {args.run_dir}")
 
     test_set = pd.read_csv(args.csv)
+    # Like validation, only the first scan of each subject unless --all_scans.
+    if not args.all_scans:
+        test_set = first_scan(test_set)
     labels = test_set["Label"].to_numpy()
     subjects = test_set["Subject"].to_numpy()
     loader = DataLoader(
@@ -54,18 +64,23 @@ def main():
         pin_memory=device.type == "cuda",
     )
 
-    rows = {}
-    fold_probs = []
+    models = []
     for path in model_paths:
-        model = MyModel(backbone=config["backbone"], pretrained=False).to(device)
+        model = MyModel(backbone=config["backbone"], pretrained=False)
         model.load_state_dict(torch.load(path, map_location=device))
-        probs = predict(model, loader, use_amp)
-        fold_probs.append(probs)
-        rows[f"fold_{fold_number(path)}"] = dict(
+        models.append(model.to(device, memory_format=torch.channels_last).eval())
+    print(
+        f"{len(test_set)} slices of {len(np.unique(subjects))} subjects, "
+        f"{len(models)} models on {device}"
+    )
+    fold_probs = predict(models, loader, use_amp)
+
+    rows = {
+        f"fold_{fold_number(path)}": dict(
             zip(METRICS, metrics_from_probs(labels, probs, subjects))
         )
-        print(f"evaluated {path.name}")
-
+        for path, probs in zip(model_paths, fold_probs)
+    }
     # The ensemble averages the slice probabilities of all fold models.
     ensemble_probs = np.mean(fold_probs, axis=0)
     ensemble = dict(zip(METRICS, metrics_from_probs(labels, ensemble_probs, subjects)))
