@@ -18,6 +18,15 @@ from utils import seed_everything
 # Show each log line immediately, also when stdout is redirected to a file.
 sys.stdout.reconfigure(line_buffering=True)  # type: ignore
 
+ROOT = Path(__file__).resolve().parent
+
+
+def project_relative(path):
+    """Path relative to the project root"""
+    path = Path(path).resolve()
+    return path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else str(path)
+
+
 # 1. get arguments
 args = get_args()
 print("Epochs:", args.epochs)
@@ -29,6 +38,7 @@ run_dir = Path(args.resume) if args.resume else Path(args.output_dir) / run_name
 # only the worker count may be adjusted between resumes
 run_dir.mkdir(parents=True, exist_ok=True)
 config = {k: v for k, v in vars(args).items() if k not in ("resume", "output_dir")}
+config["csv_dir"] = project_relative(args.csv_dir)
 config_path = run_dir / "args.json"
 if config_path.exists():
     saved = json.loads(config_path.read_text())
